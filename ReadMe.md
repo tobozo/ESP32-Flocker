@@ -51,7 +51,7 @@ The shell script will:
 
 ℹ️ Project sources will be compiled with [`arduino-cli`](https://github.com/arduino/arduino-cli) and [`platformio`](https://github.com/platformio/platformio-core) according to their nature.
 
-ℹ️ Although the recommended application launcher with this shell script is [M5StackUpdater](https://github.com/tobozo/M5Stack-SD-Updater)'s [M5Stack-FW-Menu](https://github.com/tobozo/M5Stack-SD-Updater/tree/master/examples/M5Stack-FW-Menu) example, any
+ℹ️ Although the recommended application launcher with this shell script is [M5Stack-SD-Updater](https://github.com/tobozo/M5Stack-SD-Updater)'s [M5Stack-FW-Menu](https://github.com/tobozo/M5Stack-SD-Updater/tree/master/examples/M5Stack-FW-Menu) example, any
 custom launcher will work as long as it's capable of enumerating the ota partitions and setting any of them as bootable.
 
 
@@ -127,11 +127,11 @@ In any other situation it is safe to keep the `directories` block commented out.
 Every `/data/` folders from the listed applications will be merged into a single filesystem image, and only one of spiffs/littlefs/fatfs
 can be used (default is littlefs), obviously every application using the flash filesystem will have to agree on this.
 
-Every application must provide a way to load the factory partition, this can be achieved by using `M5StackUpdater` library:
+Every application must provide a way to load the factory partition, this can be achieved by using [`M5Stack-SD-Updater`](https://github.com/tobozo/M5Stack-SD-Updater) library:
 
-- With `M5StackUpdater` and through the lobby by calling `checkFWUpdater()` instead of the usual `checkSDUpdater()`
-- With `M5StackUpdater` outside the lobby by calling `Flash::loadFactory()`
-- Without `M5StackUpdater` by implementing this function:
+- With `M5Stack-SD-Updater` and through the lobby by calling `checkFWUpdater()` instead of the usual `checkSDUpdater()`
+- With `M5Stack-SD-Updater` outside the lobby by calling `Flash::loadFactory()`
+- Without `M5Stack-SD-Updater` by implementing this function:
 
 
 ```cpp
