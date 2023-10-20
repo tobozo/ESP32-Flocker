@@ -49,9 +49,9 @@ The shell script will:
   - Path/git-url to arduino project source
   - Path/git-url to platformio project source
 
-ℹ️ Project sources will be compiled with `arduino-cli` and `platformio` according to their nature.
+ℹ️ Project sources will be compiled with [`arduino-cli`](https://github.com/arduino/arduino-cli) and [`platformio`](https://github.com/platformio/platformio-core) according to their nature.
 
-ℹ️ Although the recommended application launcher with this shell script is M5StackUpdater's M5Stack-FW-Menu example, any
+ℹ️ Although the recommended application launcher with this shell script is [M5StackUpdater](https://github.com/tobozo/M5Stack-SD-Updater)'s [M5Stack-FW-Menu](https://github.com/tobozo/M5Stack-SD-Updater/tree/master/examples/M5Stack-FW-Menu) example, any
 custom launcher will work as long as it's capable of enumerating the ota partitions and setting any of them as bootable.
 
 
@@ -167,7 +167,7 @@ void loadFactory()
 
 
 
-#### System Requirements
+#### System Prerequisites:
 
   - linux
   - bash
