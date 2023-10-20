@@ -178,5 +178,6 @@ void loadFactory()
 
 ## Credits/thanks
 
+  - [Kongduino](https://github.com/Kongduino)
   - [zeromem](https://twitter.com/zeromem0)
   - [F4HWN](https://github.com/armel)
