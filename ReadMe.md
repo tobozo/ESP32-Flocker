@@ -1,4 +1,4 @@
-### ESP32-Flocker
+# ESP32-Flocker
 
 ESP32-Flocker is a shell script used to concatenate several esp32 binaries and their application launcher into a single firmware.
 
@@ -30,7 +30,7 @@ Example of generated partition scheme with 16MB flash size:
   coredump, data,  coredump, 0xff0000, 0x010000,,.
 ```
 
-### Build process
+## Build process
 
 The shell script will:
 
@@ -55,7 +55,7 @@ The shell script will:
 custom launcher will work as long as it's capable of enumerating the ota partitions and setting any of them as bootable.
 
 
-#### JSON settings format
+## JSON settings format
 
 The bash script needs a JSON settings file to work, here's an example:
 
@@ -98,7 +98,7 @@ The bash script needs a JSON settings file to work, here's an example:
 }
 ```
 
-#### Optional members:
+## Optional members:
 
   - `build_properties`: additional compilation flags e.g. `-DMY_CUSTOM_FLAG` for **arduino-cli**
   - `flash_size`: defaults to `16MB`
@@ -114,7 +114,7 @@ The bash script needs a JSON settings file to work, here's an example:
 
 
 
-#### CI vs desktop use
+## CI vs desktop use
 
 Uncommenting the `directories` entry in `arduino-cli.yml` file **only makes sense if** no local installation of Arduino IDE exists
 e.g. a CI is running the bash script and needs to cache downloads on a different volume to save bandwidth
@@ -122,7 +122,7 @@ e.g. a CI is running the bash script and needs to cache downloads on a different
 In any other situation it is safe to keep the `directories` block commented out.
 
 
-#### Application requirements
+## Application requirements
 
 Every `/data/` folders from the listed applications will be merged into a single filesystem image, and only one of spiffs/littlefs/fatfs
 can be used (default is littlefs), obviously every application using the flash filesystem will have to agree on this.
@@ -167,7 +167,7 @@ void loadFactory()
 
 
 
-#### System Prerequisites:
+## System Prerequisites:
 
   - linux
   - bash
@@ -176,7 +176,7 @@ void loadFactory()
   - platformio
 
 
-#### Credits/thanks
+## Credits/thanks
 
   - [zeromem](https://twitter.com/zeromem0)
   - [F4HWN](https://github.com/armel)
