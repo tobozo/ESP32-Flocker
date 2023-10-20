@@ -1,5 +1,8 @@
 # ESP32-Flocker
 
+![](assets/stacked-stones.png)
+
+
 ESP32-Flocker is a shell script used to concatenate several esp32 binaries and their application launcher into a single firmware.
 
 The goal is to ease the creation of all-in-one-firmware application suites without having to manually edit the partitions.csv file
