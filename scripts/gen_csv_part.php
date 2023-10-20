@@ -58,7 +58,8 @@ if( !isset($argv) || count($argv)<=1) {
   echo sprintf("       It can be expressed as Bytes, hexadecimal or decimal e.g. 1MB, 0x200000 or 2097152".PHP_EOL);
   echo sprintf("   ⁽³⁾ The value must be a multiple of 4KB".PHP_EOL);
   echo sprintf("       It can be expressed as hexadecimal or decimal e.g. 0x121000 or 1183744".PHP_EOL.PHP_EOL);
-  echo sprintf(" Example:\n\n   php gen_csv_part.php -s 16MB -w 1MB -x 2MB -b path.to/precompiled/binaries -a path/to/build/dir -f path/to/factory-firmware.bin".PHP_EOL.PHP_EOL);
+  echo sprintf(" Example:".PHP_EOL.PHP_EOL);
+  echo sprintf("   php gen_csv_part.php -s 16MB -w 1MB -x 2MB -b path.to/precompiled/binaries -a path/to/build/dir -f path/to/factory-firmware.bin".PHP_EOL.PHP_EOL);
   exit(1);
 }
 
@@ -68,14 +69,14 @@ for( $i=1; $i<count($argv); $i+=2 ) {
   $value = isset($argv[$i+1])?$argv[$i+1]:'true';
   switch ($name) {
     case 'f': $factory_bin_name = parse_arg($name, $value, 'file_read');  break; // path to the Firmware Launcher binary (will be flashed on OTA0, will migrate to factory at first boot)
+    case 'a': $apps_dir         = parse_arg($name, $value, 'dir_read');   break; // path to the folder containing precompiled binaries, no ending slash
+    case 'b': $build_dir        = parse_arg($name, $value, 'dir_read');   break; // path to the folder where csv files and esptool args will be saved
     case 's': $flash_size       = parse_arg($name, $value, 'size_value'); break; // flash size
     case 'w': $factory_max_size = parse_arg($name, $value, 'size_value'); break; // factory partition
     case 'x': $spiffs_max_size  = parse_arg($name, $value, 'size_value'); break; // spiffs partition
     case 'c': $ota0_size        = parse_arg($name, $value, 'size_value'); break; // OTA0 size
     case 'i': $ota0_offset      = parse_arg($name, $value, 'size_value'); break; // OTA0 offset
     case 'l': $bootloader_addr  = parse_arg($name, $value, 'size_value'); break; // OTA0 offset
-    case 'a': $apps_dir         = parse_arg($name, $value, 'dir_read');   break; // path to the folder containing precompiled binaries, no ending slash
-    case 'b': $build_dir        = parse_arg($name, $value, 'dir_read');   break; // path to the folder where csv files and esptool args will be saved
 
     default: echo "Invalid option name: $name\n"; exit(1);
   }
@@ -250,13 +251,13 @@ function parse_arg( $name, $value, $type )
 
 function append_nvs( &$nvs_packed, $file )
 {
-  $appname = '/'.basename( $file['name'] );
   $nvs_packed .= pack('c', $file['ota_num'] );  // c = uint8_t ota_num{0};    // OTA partition number
   $nvs_packed .= pack('L', $file['filesize'] ); // L = uint32_t bin_size{0};   // firmware size
   $nvs_packed .= pack("H*", $file['sha256sum']);
-  $nvs_packed .= pack("a*", sprintf("%s", $appname)); // note: prepend slash
-  $remaining = 40-(strlen($appname)); // note additional slash
-  if( $remaining>0 ) {
+  $appname = '/'.basename( $file['name'] ); // note: prepend slash
+  $nvs_packed .= pack("a*", sprintf("%s", $appname));
+  $remaining = 40-(strlen($appname)); // 'name' char[40]
+  if( $remaining>0 ) { // zero-fill
     for( $i=0; $i<$remaining; $i++ ) {
       $nvs_packed .= pack('c', 0 );
     }

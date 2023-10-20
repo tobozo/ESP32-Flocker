@@ -30,28 +30,9 @@ print_header () {
 }
 
 print_usage () {
-  echo ""
-  echo ""
-  echo "Usage: ./`basename $0` -j [JSON FILE] [OPTION]..."
+  echo "Usage: ./`basename $0` -j [JSON FILE] [-v false]..."
   echo "- Load options and applications list from [JSON FILE]."
-  echo "- Compile applications into a single firmware, flashable at 0x0 address."
-  echo "- Optional args get overloaded by JSON settings:"
-  echo "  -d [DEV]⁽¹⁾      Target port for flashing"
-  echo "  -r [BAUDRATE]    Target baudrate (default=921600)"
-  echo "  -f [FREQ]        Flash frequency (default=80m)"
-  echo "  -i [MODE]        Flash mode (default=dio)"
-  echo "  -s [SIZE]⁽²⁾     Flash size"
-  echo "  -b [FQBN]        Fully qualified board name for this application set"
-  echo "  -c [FILE]⁽³⁾     Path to arduino-cli binary"
-  echo "  -e [FILE]⁽³⁾     Path to esptool.py"
-  echo "  -g [FILE]⁽³⁾     Path to gen_esp32part.py"
-  echo "  -p [FILE]⁽³⁾     Path to nvs_partition_gen.py"
-  echo "  -n [FILE]⁽³⁾     Path to nvs_tool.py"
-  echo "  -a [FILE]⁽³⁾     Path to boot_app0.bin"
-  echo ""
-  echo " ⁽¹⁾ Must be active if flashing"
-  echo " ⁽²⁾ The value can only be expressed as Bytes e.g. 1MB, 2MB, 4MB, 8MB, 16MB"
-  echo " ⁽³⁾ Will be downloaded/installed if missing"
+  echo "- Compile applications into a single firmware."
   echo ""
 }
 
@@ -83,14 +64,13 @@ get_options () {
     print_usage; exit
   fi
 }
-# helper functions
 
 clean_folders () {
   # clean all build files
-  rm -Rf ${cfg[apps_dir]}
+  rm -Rf ${APPS_DIR}
   echo " ✅  Cleaned up applications folders"
-  rm -Rf ${cfg[build_dir]}
-  rm -f "${logfile}"
+  rm -Rf ${BUILD_DIR}
+  rm -f "${LOG_FILE}"
   echo " ✅  Cleaned up build folders"
   rm -Rf ${TOOLS_DIR}
   rm -Rf .arduino15
@@ -391,11 +371,11 @@ get_board_name () {
 monitor_process () {
   pid=$!
   echo
-  echo "">>$logfile
+  echo "">>${LOG_FILE}
   while [[ 1 ]]; do
     if ps -p $pid > /dev/null;then
       printf '\e[A\e[K'
-      echo "`tail -1 ${logfile}`"
+      echo "`tail -1 ${LOG_FILE}`"
       sleep 0.05
     else
       break
@@ -407,7 +387,7 @@ monitor_process () {
 
 get_core_install () {
   local core=$1
-  ( (${cfg[arduino_cli]} core update-index >> ${logfile} && ${cfg[arduino_cli]} core install ${core} >>${logfile}) || die "${FUNCNAME[0]}() Unable to install ${core}") &
+  ( (${cfg[arduino_cli]} core update-index >> ${LOG_FILE} && ${cfg[arduino_cli]} core install ${core} >>${LOG_FILE}) || die "${FUNCNAME[0]}() Unable to install ${core}") &
   monitor_process
 }
 
@@ -512,7 +492,7 @@ process_platformio_app () {
 
     echo " 🐍  Compiling ${app} ...";
     compile_app () {
-      cd $sketch_dir && pio run -e $env >>${logfile} 2>&1 >${logfile}
+      cd $sketch_dir && pio run -e $env >>${LOG_FILE} 2>&1 >${LOG_FILE}
     }
     verify_app "$sketch_dir" || die "${FUNCNAME[0]}() App $app does not ship with M5StackUpdater\n"
     ( compile_app ) &
@@ -545,13 +525,13 @@ process_arduino_app () {
     mkdir -p "${compilation_dir}" # create build dir for this firmware
     echo " ♾  Compiling ${app} ...";
     compile_app () {
-      ${cfg[arduino_cli]} compile --fqbn="${cfg[fqbn]}" ${cfg[build_properties]} --export-binaries --output-dir="${compilation_dir}" "${sketch_dir}" >> ${logfile} 2>&1 >>${logfile}
+      ${cfg[arduino_cli]} compile --fqbn="${cfg[fqbn]}" ${cfg[build_properties]} --export-binaries --output-dir="${compilation_dir}" "${sketch_dir}" >> ${LOG_FILE} 2>&1 >>${LOG_FILE}
     }
     verify_app "$sketch_dir" || die "${FUNCNAME[0]}() App $app does not ship with M5StackUpdater\n"
     ( compile_app ) &
     monitor_process
     checkstatus "${FUNCNAME[0]}() arduino-cli failed:\n${cli_response}\n" # compilation check
-    [ -f "${src_bin_file}" ] || die "${FUNCNAME[0]}() Could not find compiled ${src_bin_file}, aborting:\nCommand: $command\nResponse: (`tail -2 $logfile`) "
+    [ -f "${src_bin_file}" ] || die "${FUNCNAME[0]}() Could not find compiled ${src_bin_file}, aborting:\nCommand: $command\nResponse: (`tail -2 ${LOG_FILE}`) "
     cp "${src_bin_file}" "${dst_bin_file}" || die "${FUNCNAME[0]}() Copy failed on ${src_bin_file}\n" # copy compiled firmware to its destination path
     if [ -d "${sketch_dir}/data" ];then # also regroup flashfs contents if applicable
       cp -R "${sketch_dir}/data" "${cfg[apps_dir]}/" || die "${FUNCNAME[0]}() Data copy failed on ${sketch_dir}/data\n"

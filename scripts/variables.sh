@@ -17,7 +17,7 @@ declare +i -r NC="\033[0m" # No Color
 readonly BUILD_DIR="build"
 readonly APPS_DIR="applications"
 readonly TOOLS_DIR="tools"
-readonly logfile="logfile.txt" # actually write only :-)
+readonly LOG_FILE="logfile.txt" # actually write only :-)
 
 # Applications list, populated from json file .applications[]
 declare -A appsArray=()
