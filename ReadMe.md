@@ -34,16 +34,16 @@ Example of generated partition scheme with 16MB flash size:
 
 The shell script will:
 
-- Read a [JSON settings](#JSON-settings-format) file
+- Read a [JSON settings](#json-settings-format) file
 - Gather/build the binaries for every applications, including the launcher
 - Create a custom partition scheme
 - Generate the NVS data for the launcher
 - Merge all binaries
 - Flash the ESP
 
-**⚠️ All included applications must meet the [application requirements](#Application-requirements).**
+**⚠️ All included applications must meet the [application requirements](#application-requirements).**
 
-ℹ️ `applications[]` items listed in the JSON settings file and can be either of:
+ℹ️ `applications[]` items listed in the [JSON settings](#json-settings-format) file and can be either of:
 
   - Path/git-url to .bin file
   - Path/git-url to arduino project source
