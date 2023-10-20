@@ -1,0 +1,7 @@
+tools/
+build/
+applications/
+.arduino15/
+.directory
+logfile.txt
+*.json

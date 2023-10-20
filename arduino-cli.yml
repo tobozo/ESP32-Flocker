@@ -1,0 +1,20 @@
+board_manager:
+  additional_urls: # the latest release from this package will be used
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json
+
+# directories:
+#   user: /home/tobozo/Arduino         # if Arduino IDE is present on the system, provide path to the local ~/Arduino/libraries folder
+#   # user:  tools/arduino/sketchbook  # if Arduino IDE is NOT present on the system, set a custom sketchbook folder to store the downloaded libraries
+#   data: .arduino15                   # relative path to install espressif packages
+#   downloads: tools/arduino/downloads # if running from a CI, set this path to a cache volume
+#   builtin.libraries: tools/arduino/libraries.builtin
+#   builtin.tools: tools/arduino/tools.builtin
+
+library: # true = also handle git-urls and zip-path library dependencies
+  enable_unsafe_install: true
+
+sketch: # we need the binaries to build the application suite
+  always_export_binaries: true
+
+updater: # don't prompt for update
+  enable_notification: false
