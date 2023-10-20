@@ -34,14 +34,14 @@ Example of generated partition scheme with 16MB flash size:
 
 The shell script will:
 
-- Read a [JSON settings](#JSON settings format) file
+- Read a [JSON settings](#JSON-settings-format) file
 - Gather/build the binaries for every applications, including the launcher
 - Create a custom partition scheme
 - Generate the NVS data for the launcher
 - Merge all binaries
 - Flash the ESP
 
-**⚠️ All included applications must meet the [application requirements](#Application requirements).**
+**⚠️ All included applications must meet the [application requirements](#Application-requirements).**
 
 ℹ️ `applications[]` items listed in the JSON settings file and can be either of:
 
@@ -51,28 +51,49 @@ The shell script will:
 
 ℹ️ Project sources will be compiled with `arduino-cli` and `platformio` according to their nature.
 
-ℹ️ Although the recommended application launcher with this shell script is M5StackUpdater's M5Stack-FW-Menu example,
-any custom launcher will work as long as it's capable of enumerating the partitions and launching the other applications.
-
-
+ℹ️ Although the recommended application launcher with this shell script is M5StackUpdater's M5Stack-FW-Menu example, any
+custom launcher will work as long as it's capable of enumerating the ota partitions and setting any of them as bootable.
 
 
 #### JSON settings format
 
+The bash script needs a JSON settings file to work, here's an example:
+
 ```json
 {
   "name": "MyApplicationSuite",
-  "fqbn": "esp32:esp32:esp32:DebugLevel=debug",
+  "fqbn": "esp32:esp32:m5stack-cores3:DebugLevel=debug",
   "build_properties": "-DMY_CUSTOM_FLAG",
-  "factory": { "name": "M5Stack-FW-Menu", "path": "~/Arduino/libraries/M5Stack-SD-Updater/examples/M5Stack-FW-Menu" },
-  "applications":[
-    { "name":"WiFiManager",       "path": "/path/to/Arduino_Projects/WiFiManager/examples/SmartConfig" },
-    { "name":"BLEScanner",        "path": "https://github.com/tobozo/ESP32-BLECollector.git", "depends":["SQLiteEsp32", "ESP32-Chimera-Core"] },
-    { "name":"SerialBridge",      "path": "/path/to/Arduino_Projects/SerialBridge", "depends": [ "SoftwareSerial" ] },
-    { "name":"HomeAssistant",     "path": "/path/to/Platformio_Projects/HomeAssistant#env-name" },
-    { "name":"Camera",            "path": "/path/to/Precompiled_Projects/Camera.bin" },
-    { "name":"Tetris",            "path": "" },
-    { "name":"Pacman",            "path": "" }
+  "factory":
+  {
+    "name": "M5Stack-FW-Menu",
+    "path": "~/Arduino/libraries/M5Stack-SD-Updater/examples/M5Stack-FW-Menu",
+    "depends": [ "M5Stack-SD-Updater", "ESP32-Chimera-Core" ]
+  },
+  "applications":
+  [
+    {
+      "name":"WiFiManager",
+      "path": "/path/to/Arduino_Projects/WiFiManager/examples/SmartConfig"
+    },
+    {
+      "name":"BLEScanner",
+      "path": "https://github.com/tobozo/ESP32-BLECollector.git",
+      "depends": [ "SQLiteEsp32", "ESP32-Chimera-Core", "NimBLE-Arduino" ]
+    },
+    {
+      "name":"SerialBridge",
+      "path": "/path/to/Arduino_Projects/SerialBridge",
+      "depends": [ "SoftwareSerial" ]
+    },
+    {
+      "name":"HomeAssistant",
+      "path": "/path/to/Platformio_Projects/SmartHass#env-name"
+    },
+    {
+      "name":"Camera",
+      "path": "/path/to/Precompiled_Projects/Camera.bin"
+    }
   ]
 }
 ```
@@ -80,15 +101,16 @@ any custom launcher will work as long as it's capable of enumerating the partiti
 #### Optional members:
 
   - `build_properties`: additional compilation flags e.g. `-DMY_CUSTOM_FLAG` for **arduino-cli**
-  - `flash_size`: default is `16MB`
-  - `flash_freq`: default is `80m`
-  - `flash_mode`: default is `dio`
-  - `target_port`: default is `/dev/ttyUSB0`
-  - `baud_rate`: default is `921600`
-  - `flashfs_type`: data partition type, default is `littlefs`
-  - `flashfs_size`: data partition size, default is `2MB`
-  - `factory_partsize`: factory partition size, default is `1MB`
+  - `flash_size`: defaults to `16MB`
+  - `flash_freq`: defaults to `80m`
+  - `flash_mode`: defaults to `dio`
+  - `target_port`: defaults to `/dev/ttyUSB0`
+  - `baud_rate`: defaults to `921600`
+  - `flashfs_type`: data partition type, defaults to `littlefs`
+  - `flashfs_size`: data partition size, defaults to `2MB`
+  - `factory_partsize`: factory partition size, defaults to `1MB`
   - `applications[].depends`: list of **arduino-cli** library dependencies for a given app, assumed as all satisfied if empty or missing
+  - `verify`: grep sketches and launcher source to verify that M5StackUpdater library is used, defaults to `true`
 
 
 
@@ -100,14 +122,16 @@ e.g. a CI is running the bash script and needs to cache downloads on a different
 In any other situation it is safe to keep the `directories` block commented out.
 
 
-
 #### Application requirements
-
-Every application must provide a way to load the factory partition.
-This can be achieved either by calling `Flash::loadFactory()` from `M5StackUpdater` library, or by implementing this function:
 
 Every `/data/` folders from the listed applications will be merged into a single filesystem image, and only one of spiffs/littlefs/fatfs
 can be used (default is littlefs), obviously every application using the flash filesystem will have to agree on this.
+
+Every application must provide a way to load the factory partition, this can be achieved by using `M5StackUpdater` library:
+
+- With `M5StackUpdater` and through the lobby by calling `checkFWUpdater()` instead of the usual `checkSDUpdater()`
+- With `M5StackUpdater` outside the lobby by calling `Flash::loadFactory()`
+- Without `M5StackUpdater` by implementing this function:
 
 
 ```cpp
@@ -151,3 +175,8 @@ void loadFactory()
   - php
   - platformio
 
+
+#### Credits/thanks
+
+  - [zeromem](https://twitter.com/zeromem0)
+  - [F4HWN](https://github.com/armel)

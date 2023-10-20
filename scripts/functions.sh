@@ -59,22 +59,9 @@ print_usage () {
 get_options () {
   # collect shell arguments
   local OPTIND # import global reference, getopts need that when run from inside a function
-  while getopts ":c:b:e:g:p:n:a:d:r:f:s:i:w:x:j:" opt; do
+  while getopts ":v:j:" opt; do
     case $opt in
-#       c) arduino_cli="$OPTARG" ;;
-#       b) fqbn="$OPTARG" ;;
-#       e) esptool="$OPTARG" ;;
-#       g) gen_esp32part="$OPTARG" ;;
-#       p) nvs_partition_gen="$OPTARG" ;;
-#       n) nvs_tool="$OPTARG" ;;
-#       a) boot_app0_bin="$OPTARG" ;;
-#       d) target_port="$OPTARG" ;;
-#       r) target_baudrate="$OPTARG" ;;
-#       f) flash_freq="$OPTARG" ;;
-#       s) flash_size="$OPTARG" ;;
-#       i) flash_mode="$OPTARG" ;;
-#       w) factory_partsize="$OPTARG" ;;
-#       x) flashfs_size="$OPTARG" ;;
+      v) cfg[verify]="$OPTARG" ;;
       j) readonly json_settings_file="$OPTARG" ;;
       \?) echo;echo " ❌  Invalid option: -$OPTARG" >&2; print_usage; exit 1 ;;
     esac
@@ -105,7 +92,7 @@ clean_folders () {
   rm -Rf ${cfg[build_dir]}
   rm -f "${logfile}"
   echo " ✅  Cleaned up build folders"
-  rm -Rf ${cfg[tools_dir]}
+  rm -Rf ${TOOLS_DIR}
   rm -Rf .arduino15
   echo " ✅  Cleaned up tools and packages folder"
   echo ""
@@ -114,7 +101,7 @@ clean_folders () {
 
 die () {
   echo ""
-  printf " ❌  ${RED}[FATAL] ${1}${NC}"
+  printf " ❌  ${RED}[FATAL]${NC}${1}"
   echo ""
   export has_error="true"
   exit 1
@@ -171,6 +158,24 @@ to_hex () {
 }
 
 
+print_cfg () {
+  for config in "${!cfg[@]}"; do
+    printf " 📑  %-24s: %s\n" "$config" "${cfg[$config]}"
+  done
+}
+
+
+set_build_app_paths () {
+  local fqbn_bits=(${1//:/ }) # FQBN may have some compound values e.g. :DebugLevel=debug
+  mkdir -p ${TOOLS_DIR} || die "${FUNCNAME[0]}() Unable to create dir ${TOOLS_DIR}"
+  cfg+=([apps_dir]="${APPS_DIR}/${fqbn_bits[0]}/${fqbn_bits[1]}/${fqbn_bits[2]}")
+  cfg+=([build_dir]="${BUILD_DIR}/${fqbn_bits[0]}/${fqbn_bits[1]}/${fqbn_bits[2]}")
+  cfg[merged_bin]="${BUILD_DIR}/${cfg[merged_bin_name]}"
+  mkdir -p "${cfg[apps_dir]}" || die "${FUNCNAME[0]}() Unable to create dir ${cfg[apps_dir]}"
+  mkdir -p "${cfg[build_dir]}" || die "${FUNCNAME[0]}() Unable to create dir ${cfg[build_dir]}"
+}
+
+
 read_json_settings () {
   [ -f "${json_settings_file}" ] || return # die "${FUNCNAME[0]}() Invalid json settings file: ${json_settings_file}"
 
@@ -186,7 +191,7 @@ read_json_settings () {
   local response=""
 
   # load optional settings
-  response=`cat ${json_settings_file} | jq -r .fqbn`;             [ $response != "null" ] && cfg+=([fqbn]="${response}") || die "${FUNCNAME[0]}() No FQBN provided"
+  response=`cat ${json_settings_file} | jq -r .fqbn`;             [ $response != "null" ] && cfg+=([fqbn]="${response}") || die "${FUNCNAME[0]}() No fqbn provided"
   response=`cat ${json_settings_file} | jq -r .build_properties`; [ $response != "null" ] && cfg+=([build_properties]="--build-property build.defines=\"${response}\"")
   response=`cat ${json_settings_file} | jq -r .factory.name`;     [ $response != "null" ] && cfg[name]="${response}"
   response=`cat ${json_settings_file} | jq -r .factory_partsize`; [ $response != "null" ] && cfg[factory_partsize]="${response}"
@@ -194,10 +199,12 @@ read_json_settings () {
   response=`cat ${json_settings_file} | jq -r .flash_size`;       [ $response != "null" ] && cfg[flash_size]="${response}"
   response=`cat ${json_settings_file} | jq -r .flash_freq`;       [ $response != "null" ] && cfg[flash_freq]="${response}"
   response=`cat ${json_settings_file} | jq -r .flash_mode`;       [ $response != "null" ] && cfg[flash_mode]="${response}"
-  response=`cat ${json_settings_file} | jq -r .flashfs_type`;     [ $response != "null" ] && cfg[flashfs_type]="${response}" && cfg[mkfs_bin]="${cfg[tools_dir]}/mk${cfg[flashfs_type]}"
+  response=`cat ${json_settings_file} | jq -r .flashfs_type`;     [ $response != "null" ] && cfg[flashfs_type]="${response}" && cfg[mkfs_bin]="${TOOLS_DIR}/mk${cfg[flashfs_type]}"
   response=`cat ${json_settings_file} | jq -r .flashfs_size`;     [ $response != "null" ] && cfg[flashfs_size]="${response}"
   response=`cat ${json_settings_file} | jq -r .target_port`;      [ $response != "null" ] && cfg[target_port]="${response}"
   response=`cat ${json_settings_file} | jq -r .target_baudrate`;  [ $response != "null" ] && cfg[target_baudrate]="${response}"
+  response=`cat ${json_settings_file} | jq -r .verify`;           [ $response != "null" ] && cfg[verify]="${response}"
+
 
   # validate numeric/hex/byte values
   to_dec "${cfg[flash_size]}"       || die "${FUNCNAME[0]}() Invalid value for flash_size: ${cfg[flash_size]}"
@@ -205,14 +212,15 @@ read_json_settings () {
   to_dec "${cfg[target_baudrate]}"  || die "${FUNCNAME[0]}() Invalid value for target_baudrate: ${cfg[target_baudrate]}"
   to_dec "${cfg[factory_partsize]}" || die "${FUNCNAME[0]}() Invalid value for factory_partsize: ${cfg[factory_partsize]}"
 
+  set_build_app_paths "${cfg[fqbn]}" # create tools, build and app folders
+
+  # DEBUG: print all values from 'cfg' array
+  print_cfg
+
   local factory_path="`cat ${json_settings_file} | jq -r .factory.path`"
 
   [ ${cfg[name]} != "null" ] && [ ${cfg[name]} != "" ] || die "${FUNCNAME[0]}() No factory name provided"
   [ $factory_path != "null" ]        && [ $factory_path != "" ]        || die "${FUNCNAME[0]}() No factory path provided"
-
-  for config in "${!cfg[@]}"; do
-    printf " 📑  %-24s: %s\n" "$config" "${cfg[$config]}"
-  done
 
   appsArray+=([${cfg[name]}]="${factory_path}")
 
@@ -238,20 +246,6 @@ read_json_settings () {
 
     appsArray+=([${app_name}]="${app_path}")
   done
-}
-
-
-set_build_app_paths () {
-  local fqbn_dirty=$1 # FQBN may have some compound values e.g. :DebugLevel=debug
-  local fqbn_bits=(${fqbn_dirty//:/ })
-  local fqbn_apps_dir="${cfg[apps_dir]}/${fqbn_bits[0]}/${fqbn_bits[1]}/${fqbn_bits[2]}"
-  local fqbn_build_dir="${cfg[build_dir]}/${fqbn_bits[0]}/${fqbn_bits[1]}/${fqbn_bits[2]}"
-  #export target_chip="${fqbn_bits[1]}" # pre-fill (will be replaced by arduino-cli query result)
-  cfg[apps_dir]="${fqbn_apps_dir}"
-  cfg[build_dir]="${fqbn_build_dir}"
-  cfg[merged_bin]="${cfg[build_dir]}/${cfg[merged_bin_name]}"
-  mkdir -p "${cfg[apps_dir]}" || die "${FUNCNAME[0]}() Unable to create dir ${cfg[apps_dir]}"
-  mkdir -p "${cfg[build_dir]}" || die "${FUNCNAME[0]}() Unable to create dir ${cfg[build_dir]}"
 }
 
 
@@ -394,7 +388,6 @@ get_board_name () {
 }
 
 
-
 monitor_process () {
   pid=$!
   echo
@@ -412,7 +405,6 @@ monitor_process () {
 }
 
 
-
 get_core_install () {
   local core=$1
   ( (${cfg[arduino_cli]} core update-index >> ${logfile} && ${cfg[arduino_cli]} core install ${core} >>${logfile}) || die "${FUNCNAME[0]}() Unable to install ${core}") &
@@ -420,19 +412,14 @@ get_core_install () {
 }
 
 
-
-
 get_board_details () {
   if [ -f "${cfg[arduino_cli_config_file]}" ];then
-    # ${arduino_cli} --config-file ${cfg[arduino_cli_config_file]} config dump
     cfg[arduino_cli]="${cfg[arduino_cli]} --config-file ${cfg[arduino_cli_config_file]}"
-    echo "NEW CLI PATH: ${cfg[arduino_cli]}"
-    #exit
   fi
 
   local fqbn_clean=`fqbn_clean "${cfg[fqbn]}"`
-  #resp=`${cfg[arduino_cli]} board details --show-properties=expanded -b "${fqbn_clean}" > "${cfg[build_dir]}/board_details.txt" # 2>&1 >/dev/null`
-  ${cfg[arduino_cli]} board details --show-properties=expanded -b "${fqbn_clean}" > "${cfg[build_dir]}/board_details.txt" # 2>&1 >/dev/null
+
+  ${cfg[arduino_cli]} board details --show-properties=expanded -b "${fqbn_clean}" > "${cfg[build_dir]}/board_details.txt" 2>&1 # >/dev/null
 
   local status=$?
 
@@ -448,12 +435,10 @@ get_board_details () {
 }
 
 
-
 get_build_mcu () {
   local fqbn_clean=`fqbn_clean "${cfg[fqbn]}"`
-  # retrieve the "build.mcu" board property
   [ -f "${cfg[build_dir]}/board_details.txt" ] || return 1
-  local build_mcu_pref=`cat "${cfg[build_dir]}/board_details.txt" | grep 'build\.mcu'`
+  local build_mcu_pref=`cat "${cfg[build_dir]}/board_details.txt" | grep 'build\.mcu'` # retrieve the "build.mcu" board property
   if test -z "$build_mcu_pref"
   then
     printf "${RED}${cfg[fqbn]}${NC}\n"
@@ -491,6 +476,7 @@ has_factory_sketch () {
 
 
 verify_app () {
+  [ "${cfg[verify]}" != "true" ] && return 0
   local sketch_dir=$1
   grep -R M5StackUpdater $sketch_dir 2>&1 >/dev/null || return 1
   grep -R checkFWUpdater $sketch_dir 2>&1 >/dev/null || return 1
@@ -525,7 +511,6 @@ process_platformio_app () {
   if [ ! -f "${dst_bin_file}" ];then # check if firmware was previously compiled
 
     echo " 🐍  Compiling ${app} ...";
-    # local cli_response=`(cd $sketch_dir && pio run -e $env)`
     compile_app () {
       cd $sketch_dir && pio run -e $env >>${logfile} 2>&1 >${logfile}
     }
@@ -533,7 +518,7 @@ process_platformio_app () {
     ( compile_app ) &
     monitor_process
 
-    checkstatus "${FUNCNAME[0]}() platformio failed: \n${cli_response}\n" # compilation check
+    checkstatus "${FUNCNAME[0]}() platformio failed, check logs" # compilation check
     [ -f "${src_bin_file}" ] || die "${FUNCNAME[0]}() Could not find compiled ${src_bin_file}, aborting"
     cp "${src_bin_file}" "${dst_bin_file}" || die "${FUNCNAME[0]}() Copy failed on ${src_bin_file}\n" # copy compiled firmware to its destination path
     if [ -d "${sketch_dir}/data" ];then # also regroup flashfs contents if applicable
@@ -550,9 +535,7 @@ process_platformio_app () {
 process_arduino_app () {
   local app="$1"
   local sketch_dir="$2"
-  # last_dir="${dir##*/}"
   local ino_name="${sketch_dir##*/}"
-  # echo $ino_name;exit;
   local src_ino_bin="${ino_name}.ino.bin" # compiled source firmware name
   local dst_ino_bin="${app}.ino.bin" # compiled destination firmware name
   local compilation_dir="${cfg[build_dir]}/${app}" # firmware build (dir)
@@ -622,7 +605,7 @@ dispatch_app () {
     process_platformio_app "${name}" "${path}"
   elif [ "${type}" == "arduino-cli" ]; then
     process_arduino_app "${app}" "${path}"
-  elif [ "${type}" == "precompiled" ]; then
+  elif [ "${type}" == "precompiled" ]; then # YOLO
     process_binary_app "${app}" "${path}"
   else
     die "${FUNCNAME[0]}() Unable to identify project $type at ${path}"
@@ -679,53 +662,47 @@ process_apps () {
 }
 
 
+
+check_system_dep () {
+  local bin_name=$1
+  if [ "`which $bin_name 2>/dev/null`" == "" ]; then
+    die "${FUNCNAME[0]}() $bin_name not found in %PATH%"
+  fi
+}
+
+
+
 check_tools () {
-  mkdir -p ${cfg[tools_dir]} || die "${FUNCNAME[0]}() Unable to create dir ${cfg[tools_dir]}"
-  set_build_app_paths "${cfg[fqbn]}" # process config settings
-  # check arduino-cli path, install if necessary
+  # must satisfy system requirements
+  check_system_dep php
+  check_system_dep python3
+  check_system_dep wget
+  check_system_dep git
+  check_system_dep platformio
+
+  # check Arduino CLI, install if necessary
   if [ ! -f "${cfg[arduino_cli]}" ];then
     echo " 📥  Installing arduino cli"
-    fetch_if_no_exists "${cfg[tools_dir]}/install-arduino-cli.sh" "https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh"
-    local res1=`chmod +x ${cfg[tools_dir]}/install-arduino-cli.sh`
-    local res2=`BINDIR=${cfg[tools_dir]} ${cfg[tools_dir]}/install-arduino-cli.sh`
-    cfg[arduino_cli]="${cfg[tools_dir]}/arduino-cli"
+    fetch_if_no_exists "${TOOLS_DIR}/install-arduino-cli.sh" "https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh"
+    local res1=`chmod +x ${TOOLS_DIR}/install-arduino-cli.sh` || die "${FUNCNAME[0]}() chmod failed"
+    local res2=`BINDIR=${TOOLS_DIR} ${TOOLS_DIR}/install-arduino-cli.sh` || die "${FUNCNAME[0]}() install failed"
+    [ -f "${TOOLS_DIR}/arduino-cli" ] || die "${FUNCNAME[0]}() installed binary not found:\nchmod +x ${TOOLS_DIR}/install-arduino-cli.sh\nBINDIR=${TOOLS_DIR} ${TOOLS_DIR}/install-arduino-cli.sh"
+    cfg[arduino_cli]="${TOOLS_DIR}/arduino-cli"
   fi
 
-  # use arduino-cli to figure out the build mcu from the given FQBN
-  #readonly target_chip=`get_build_mcu` || die "${FUNCNAME[0]}() Can't get build MCU}"
-
-  # locate platformio
-  if [ "`which platformio 2>/dev/null`" == "" ]; then
-    die "${FUNCNAME[0]}() Platformio not found, install it manually. See https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html"
-    # echo " 📥  Installing platformio"
-    # TODO: automate installation
-    # 1) python package manager
-    #    python3 -m pip install -U platformio
-    # 2) python installer
-    #    wget https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py && python3 get-platformio.py
-    # 3) system package manager
-    #    sudo apt install platformio
-    #    pacman -Syu platformio
-    #    brew install platformio
-  fi
-
-  if [ "`which php 2>/dev/null`" == "" ]; then
-    die "${FUNCNAME[0]}() php binary not found, install it manually"
-    # echo " 📥  Installing php"
-  fi
-
+  # use Arduino CLI to load board details and install espressif core if necessary
   get_board_details
 
-  # find esptool path, clone if necessary
+  # find esptool path, clone from repo if necessary
   if [ ! -f "${cfg[esptool]}" ];then
     # try default git clone path
-    cfg[esptool]="${cfg[tools_dir]}/esptool/esptool.py"
+    cfg[esptool]="${TOOLS_DIR}/esptool/esptool.py"
     if [ ! -f "${cfg[esptool]}" ]; then
       local pref_line=`cat "${cfg[build_dir]}/board_details.txt" | grep "runtime.tools.esptool_py.path"`
       local esptool_path="${pref_line#*=}"
       if [ ! -f "$esptool_path/esptool.py" ];then
         echo " 📥  Cloning esptool (missing $esptool_path)"
-        local res=`git clone https://github.com/espressif/esptool --depth 1 --quiet ${cfg[tools_dir]}/esptool`
+        local res=`git clone https://github.com/espressif/esptool --depth 1 --quiet ${TOOLS_DIR}/esptool`
         [ -f "$esptool_path/esptool.py" ] || die "${FUNCNAME[0]}() Failed to clone esptool"
       else
         echo " ♾️  Using esptool.py from arduino-cli"
@@ -742,22 +719,25 @@ check_tools () {
       cfg[gen_esp32part]="$gen_esp32part_path"
       echo " ♾️  Using gen_esp32part.py from arduino-cli"
     else
-      cfg[gen_esp32part]="${cfg[tools_dir]}/gen_esp32part.py"
+      cfg[gen_esp32part]="${TOOLS_DIR}/gen_esp32part.py"
       fetch_if_no_exists "${cfg[gen_esp32part]}" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/partition_table/gen_esp32part.py"
     fi
   fi
+
   # find nvs_partition_gen path, download from esp-idf repo if necessary
   if [ ! -f "$nvs_partition_gen" ];then
-    cfg[nvs_partition_gen]="${cfg[tools_dir]}/nvs_partition_gen.py"
+    cfg[nvs_partition_gen]="${TOOLS_DIR}/nvs_partition_gen.py"
     fetch_if_no_exists "${cfg[nvs_partition_gen]}" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py"
   fi
+
   # find nvs_tool path, download from esp-idf repo if necessary
   if [ ! -f "$nvs_tool" ];then
-    cfg[nvs_tool]="${cfg[tools_dir]}/nvs_tool.py"
+    cfg[nvs_tool]="${TOOLS_DIR}/nvs_tool.py"
     fetch_if_no_exists "${cfg[nvs_tool]}" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_tool/nvs_tool.py"
-    fetch_if_no_exists "${cfg[tools_dir]}/nvs_logger.py" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_tool/nvs_logger.py"
-    fetch_if_no_exists "${cfg[tools_dir]}/nvs_parser.py" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_tool/nvs_parser.py"
+    fetch_if_no_exists "${TOOLS_DIR}/nvs_logger.py" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_tool/nvs_logger.py"
+    fetch_if_no_exists "${TOOLS_DIR}/nvs_parser.py" "https://raw.githubusercontent.com/espressif/esp-idf/master/components/nvs_flash/nvs_partition_tool/nvs_parser.py"
   fi
+
   # find boot_app0.bin path, download if necessary
   if [ ! -f "${cfg[boot_app0_bin]}" ];then
     local boot_app0_path=`cat "${cfg[build_dir]}/board_details.txt" | grep boot_app0 | tr ' ' '\n' | grep boot_app0 | tr -d '"'`
@@ -769,6 +749,7 @@ check_tools () {
       fetch_if_no_exists "${cfg[build_dir]}/${cfg[boot_app0_bin]}" "https://github.com/espressif/arduino-esp32/raw/master/tools/partitions/boot_app0.bin -O boot_app0.bin"
     fi
   fi
+
   # find flashfs tool path
   if [ ! -f "${cfg[mkfs_bin]}" ];then
     local mkfs_name="mk${cfg[flashfs_type]}"
@@ -778,32 +759,28 @@ check_tools () {
     echo " ♾️  Using ${mkfs_name} from arduino-cli"
     cfg[mkfs_bin]="${mkfs_path}/${mkfs_name}"
   fi
-
 }
 
 
 print_config () {
   echo ""
-  # verified settings
-
-  value="$(has_fqbn)";                            printf " ⚙  %-38s : %s \n" "Fully qualified board name" "${value}"
-  value="$(has_arduino_cli)";                     printf " ⚙  %-38s : %s \n" "Arduino CLI path" "${value}"
-  value="$(file_status "${cfg[esptool]}")";            printf " ⚙  %-38s : %s \n" "esptool path" "${value}"
-  value="$(file_status "${cfg[gen_esp32part]}")";      printf " ⚙  %-38s : %s \n" "ESP32 partition table generation tool" "${value}"
-  value="$(file_status "${cfg[nvs_partition_gen]}")";  printf " ⚙  %-38s : %s \n" "esp-idf NVS partition generation tool" "${value}"
-  value="$(file_status "${cfg[nvs_tool]}")";           printf " ⚙  %-38s : %s \n" "esp-idf NVS Partition Parser Utility" "${value}"
-  value="$(file_status "${cfg[boot_app0_bin]}")";      printf " ⚙  %-38s : %s \n" "Boot switch file (boot_app0.bin)" "${value}"
-  value="$(file_status "${cfg[mkfs_bin]}")";           printf " ⚙  %-38s : %s \n" "${cfg[flashfs_type]} path" "${value}"
-  value="$(has_factory_sketch)";                  printf " ⚙  %-38s : %s \n" "FW-Menu sketch path" "${value}"
-  # value="$(had_build_mcu)";                       printf " ⚙  %-38s : %s \n" "Target chip" "${value}"
-  value="$(has_flash_size)";                      printf " ⚙  %-38s : %s \n" "Flash size" "${value}"
-  value="$(has_part_size)";                       printf " ⚙  %-38s : %s \n" "Factory size" "${value}"
-  value="$(has_fs_size)";                         printf " ⚙  %-38s : %s \n" "FlashFs size" "${value}"
-  value="$(has_port)";                            printf " ⚙  %-38s : %s \n" "Target port" "${value}"
-  value="$(has_flash_freq)";                      printf " ⚙  %-38s : %s \n" "Flash frequency" "${value}"
-  value="$(has_flash_mode)";                      printf " ⚙  %-38s : %s \n" "Flash mode" "${value}"
-  value="$(get_board_name)";                      printf " ⚙  %-38s : %s \n" "Board name" "${value}"
-  # extrapolated/unverifiable settings
+  value="$(has_fqbn)";                                printf " ⚙  %-38s : %s \n" "Fully qualified board name" "${value}"
+  value="$(has_arduino_cli)";                         printf " ⚙  %-38s : %s \n" "Arduino CLI path" "${value}"
+  value="$(file_status "${cfg[esptool]}")";           printf " ⚙  %-38s : %s \n" "esptool path" "${value}"
+  value="$(file_status "${cfg[gen_esp32part]}")";     printf " ⚙  %-38s : %s \n" "ESP32 partition table generation tool" "${value}"
+  value="$(file_status "${cfg[nvs_partition_gen]}")"; printf " ⚙  %-38s : %s \n" "esp-idf NVS partition generation tool" "${value}"
+  value="$(file_status "${cfg[nvs_tool]}")";          printf " ⚙  %-38s : %s \n" "esp-idf NVS Partition Parser Utility" "${value}"
+  value="$(file_status "${cfg[boot_app0_bin]}")";     printf " ⚙  %-38s : %s \n" "Boot switch file (boot_app0.bin)" "${value}"
+  value="$(file_status "${cfg[mkfs_bin]}")";          printf " ⚙  %-38s : %s \n" "${cfg[flashfs_type]} path" "${value}"
+  value="$(has_factory_sketch)";                      printf " ⚙  %-38s : %s \n" "FW-Menu sketch path" "${value}"
+  value="$(has_flash_size)";                          printf " ⚙  %-38s : %s \n" "Flash size" "${value}"
+  value="$(has_part_size)";                           printf " ⚙  %-38s : %s \n" "Factory size" "${value}"
+  value="$(has_fs_size)";                             printf " ⚙  %-38s : %s \n" "FlashFs size" "${value}"
+  value="$(has_port)";                                printf " ⚙  %-38s : %s \n" "Target port" "${value}"
+  value="$(has_flash_freq)";                          printf " ⚙  %-38s : %s \n" "Flash frequency" "${value}"
+  value="$(has_flash_mode)";                          printf " ⚙  %-38s : %s \n" "Flash mode" "${value}"
+  value="$(get_board_name)";                          printf " ⚙  %-38s : %s \n" "Board name" "${value}"
+  # extrapolated/inherited settings
   printf " ⚙  %-38s : %s \n" "Target baudrate" "${cfg[target_baudrate]}"
   printf " ⚙  %-38s : %s \n" "Flash filesystem type" "${cfg[flashfs_type]}"
   printf " ⚙  %-38s : %s \n" "Applications dir" "${cfg[apps_dir]}"

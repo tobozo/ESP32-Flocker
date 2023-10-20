@@ -10,14 +10,14 @@
 #  copyleft (c+) tobozo 2023
 #  https://github.com/tobozo
 
-# global constants, none of these need editing
 declare +i -r GREEN="\033[0;32m"
 declare +i -r RED="\033[1;31m"
 declare +i -r NC="\033[0m" # No Color
 
-# export json_settings_file="settings.json"
-export has_error="false"
-readonly logfile="logfile.txt"
+readonly BUILD_DIR="build"
+readonly APPS_DIR="applications"
+readonly TOOLS_DIR="tools"
+readonly logfile="logfile.txt" # actually write only :-)
 
 # Applications list, populated from json file .applications[]
 declare -A appsArray=()
@@ -35,10 +35,7 @@ declare -A cfg=(
   [flashfs_type]="littlefs"                        #   Filesystem type (spiffs/littlefs/fatfs)
   [flashfs_size]="2MB"                             #   Flashfs partition size (SPIFFS, LittleFS, FatFS), defaults to 2MB
   [factory_partsize]="1MB"                         #   Factory partition max size, defaults to 1MB
-                                                   # PRIVATE: Populated by shell script
-  [tools_dir]="tools"                              #   Tools directory
-  [apps_dir]="applications"                        #   Base application directory, path chunks will be appended
-  [build_dir]="build"                              #   Base build directory, path chunks will be appended
+                                                   # PRIVATE: Defaults overwritten by JSON settings
   [arduino_cli_config_file]="arduino-cli.yml"      #   Path to Arduino CLI options file
   [arduino_cli]="tools/arduino-cli"                #   Path to arduino-cli binary
   [esptool]="tools/esptool/esptool.py"             #   Path to esptool
@@ -50,11 +47,6 @@ declare -A cfg=(
   [boot_addr]="0x0"                                #   Bootloader address
   [mkfs_bin]="tools/mklittlefs"                    #   Path to mklittlefs/mkspiffs/mkfatfs
   [merged_bin_name]="merged-flash.bin"             #   Path to output firmware
-
-
-#  [fqbn]=""                                        #   FQBN for this applications set
-#  [esptool_flags_flash]=""                         #   Esptool args for flashing
-#  [esptool_flags_merge]=""                         #   Esptool args for merging binary
-#  [build_properties]=""                            #   Extra properties/flags when building binaries
+  [verify]="true"                                  #   Boolean, enable to check for M5StackUpdater integrity
 )
 
