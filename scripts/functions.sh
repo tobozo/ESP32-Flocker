@@ -415,6 +415,20 @@ get_board_details () {
 }
 
 
+get_esptool () {
+  [ -f "${cfg[build_dir]}/board_details.txt" ] || die "Unable to read board details for FQBN ${cfg[fqbn]}"
+
+  local esptool_path_pref=`cat "${cfg[build_dir]}/board_details.txt" | grep 'tools\.esptool_py\.path='` # retrieve the "tools.esptool_py.path" board property
+  local esptool_cmd_pref=`cat "${cfg[build_dir]}/board_details.txt" | grep 'tools\.esptool_py\.cmd='` # retrieve the "tools.esptool_py.cmd" board property
+  local esptool_path=""
+  local esptool_cmd=""
+  test -z "$esptool_cmd_pref" && echo "tools.esptool_py.cmd is empty"   || { local parts=(${esptool_cmd_pref//=/ });  esptool_cmd="${parts[1]}"; } # split at equal "=" sign
+  test -z "$esptool_path_pref" && echo "tools.esptool_py.path is empty" || { local parts=(${esptool_path_pref//=/ }); esptool_path="${parts[1]}"; } # split at equal "=" sign
+  [ -f "${esptool_path}/${esptool_cmd}" ] && cfg[esptool]="$esptool_path/$esptool_cmd" || die "${FUNCNAME[0]}() invalid board details: $esptool_path/$esptool_cmd"
+}
+
+
+
 get_build_mcu () {
   local fqbn_clean=`fqbn_clean "${cfg[fqbn]}"`
   [ -f "${cfg[build_dir]}/board_details.txt" ] || return 1
@@ -673,20 +687,22 @@ check_tools () {
   # use Arduino CLI to load board details and install espressif core if necessary
   get_board_details
 
+  get_esptool
+
   # find esptool path, clone from repo if necessary
   if [ ! -f "${cfg[esptool]}" ];then
     # try default git clone path
-    cfg[esptool]="${TOOLS_DIR}/esptool/esptool.py"
+    cfg[esptool]="${TOOLS_DIR}/esptool/esptool"
     if [ ! -f "${cfg[esptool]}" ]; then
       local pref_line=`cat "${cfg[build_dir]}/board_details.txt" | grep "runtime.tools.esptool_py.path"`
       local esptool_path="${pref_line#*=}"
-      if [ ! -f "$esptool_path/esptool.py" ];then
+      if [ ! -f "$esptool_path/esptool" ];then
         echo " 📥  Cloning esptool (missing $esptool_path)"
         local res=`git clone https://github.com/espressif/esptool --depth 1 --quiet ${TOOLS_DIR}/esptool`
-        [ -f "$esptool_path/esptool.py" ] || die "${FUNCNAME[0]}() Failed to clone esptool"
+        [ -f "$esptool_path/esptool" ] || die "${FUNCNAME[0]}() Failed to clone esptool"
       else
-        echo " ♾️  Using esptool.py from arduino-cli"
-        cfg[esptool]="$esptool_path/esptool.py"
+        echo " ♾️  Using esptool from arduino-cli"
+        cfg[esptool]="$esptool_path/esptool"
       fi
     fi
   fi
@@ -725,8 +741,8 @@ check_tools () {
       echo " ♾️  Using boot_app0.bin from arduino-cli"
       cfg[boot_app0_bin]="$boot_app0_path"
     else
-      cfg[boot_app0_bin]="boot_app0.bin"
-      fetch_if_no_exists "${cfg[build_dir]}/${cfg[boot_app0_bin]}" "https://github.com/espressif/arduino-esp32/raw/master/tools/partitions/boot_app0.bin -O boot_app0.bin"
+      cfg[boot_app0_bin]="${cfg[build_dir]}/boot_app0.bin"
+      fetch_if_no_exists "${cfg[boot_app0_bin]}" "https://github.com/espressif/arduino-esp32/raw/master/tools/partitions/boot_app0.bin -O boot_app0.bin"
     fi
   fi
 
@@ -790,9 +806,9 @@ get_bootloader () {
 
   local parts=(${sdk_path//=/ }) # split "sdk.path=blah" at equal "=" sign
   local bootloader_path="${parts[1]}/bin/bootloader_${cfg[flash_mode]}_${cfg[flash_freq]}.elf"
-  local elf2image_fmt=" --chip %s elf2image --flash_mode %s --flash_freq %s --flash_size %s -o %s/bootloader.bin %s"
+  local elf2image_fmt=" --chip %s elf2image --flash-mode %s --flash-freq %s --flash-size %s -o %s/bootloader.bin %s"
   local esptool_args=`printf "${elf2image_fmt}" "${target_chip}" "${cfg[flash_mode]}" "${cfg[flash_freq]}" "${cfg[flash_size]}" "${cfg[build_dir]}" "${bootloader_path}"`
-  local command="python3 ${cfg[esptool]} ${esptool_args}"
+  local command="${cfg[esptool]} ${esptool_args}"
   local response=`${command}`
   echo " 📋  Generated bootloader.elf from `basename ${bootloader_path}`"
   [ -f "${cfg[build_dir]}/bootloader.bin" ] || die "${FUNCNAME[0]}() Failed to create ${cfg[build_dir]}/bootloader.bin:\n${command}\n${response}"
@@ -856,12 +872,12 @@ get_artifacts () {
 set_esptool_args () {
   # build args for flashing
   local target_chip=`get_build_mcu` || die "${FUNCNAME[0]}() Can't get build MCU}"
-  local extra_flags_flash="--before default_reset --after hard_reset write_flash -e -z"
-  local flags_fmt_flash="--chip %s --port %s --baud %s %s --flash_mode %s --flash_size %s --flash_freq %s"
+  local extra_flags_flash="--before default-reset --after hard-reset write-flash -e -z"
+  local flags_fmt_flash="--chip %s --port %s --baud %s %s --flash-mode %s --flash-size %s --flash-freq %s"
   cfg+=([esptool_flags_flash]="`printf " ${flags_fmt_flash}" "${target_chip}" "${cfg[target_port]}" "${cfg[target_baudrate]}" "${extra_flags_flash}" "${cfg[flash_mode]}" "${cfg[flash_size]}" "${cfg[flash_freq]}"`")
   # build args for merging binaries
   local extra_flags_merge="merge_bin -o ${cfg[merged_bin]}"
-  local flags_fmt_merge="--chip %s %s --flash_mode %s --flash_size %s"
+  local flags_fmt_merge="--chip %s %s --flash-mode %s --flash-size %s"
   cfg+=([esptool_flags_merge]="`printf " ${flags_fmt_merge}" "${target_chip}" "${extra_flags_merge}" "${cfg[flash_mode]}" "${cfg[flash_size]}"`")
 }
 
@@ -871,7 +887,7 @@ create_merged_bin () {
   echo " 📇  Loading esptool args"
   local esptool_args=`cat "${cfg[build_dir]}/esptool.args"`
   echo " ⚡  Creating flash binary"
-  local response=`python3 "${cfg[esptool]}" ${cfg[esptool_flags_merge]} ${esptool_args}`
+  local response=`"${cfg[esptool]}" ${cfg[esptool_flags_merge]} ${esptool_args}`
   local filesize=`stat -c"%s" "${cfg[merged_bin]}"` # print stats
   checkstatus "${FUNCNAME[0]}() Stat failed on ${cfg[merged_bin]}\n"
   printf " ✅  %-36s - %s bytes\n" "${cfg[merged_bin]}" "${filesize}"
@@ -882,7 +898,7 @@ create_merged_bin () {
 flash_merged_bin () {
   if sh -c ": >${cfg[target_port]}" >/dev/null 2>/dev/null; then
     echo " ⚡  Flashing ${cfg[target_port]}"
-    python3 "${cfg[esptool]}" ${cfg[esptool_flags_flash]} 0x0 "${cfg[merged_bin]}"
+    "${cfg[esptool]}" ${cfg[esptool_flags_flash]} 0x0 "${cfg[merged_bin]}"
     checkstatus "${FUNCNAME[0]}() Flashing failed on ${cfg[target_port]}\n"
     pio device monitor -b 115200
   fi
